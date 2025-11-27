@@ -23,8 +23,9 @@ A module to generate multi-step forms.
 2. Add the input parameters below to the Global Script
    1. CancelCallback
    2. SaveCallback
-   3. WizardStepsConfig
-   4. WizardContainerClass
+   3. NextCallback
+   4. WizardStepsConfig
+   5. WizardContainerClass
 3. Drag a *JavaScript* action into the script
 4. Add the Javascript below into the JavaScript code property
 ```javascript
@@ -526,10 +527,16 @@ This script is useful if you want to store partially completed wizard forms
 ## Page.Load EventHandler
 1. Drag the global script called "FormWizardGenerate" into the Page.Load Event Handler
 2. Complete the input parameters as required
-   1. CancelCallback: The name of the Page Script to handle the Cancel callback
-   2. SaveCallback: The name of the Page Script to handle the Save callback
-   3. WizardStepsConfig: A list of step titles for the wizard (type: Any)
-   4. WizardContainerClass: The class assigned to the main wizard container
+   1. CancelCallback (optional): The name of the Page Script to handle the Cancel callback
+   2. NextCallback (optional): The name of the Page Script to handle the Next navigation callback
+   3. SaveCallback (optional): The name of the Page Script to handle the Save callback
+   4. WizardStepsConfig (optional): A list of step titles for the wizard (type: Any)
+   5. WizardContainerClass: The class assigned to the main wizard container
+
+Titles List Example:
+```json
+["Personal", "Address", "Favourites", "Gender"]
+```
 
 ![](images/ScriptParameters.png)
 
