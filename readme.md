@@ -501,6 +501,8 @@ This script is useful if you want to perform any actions when the user cancels t
 3. Complete the input parameter for the "FormWizardReset" Global Script as required
    1. WizardContainerClass: The class assigned to the main wizard container
 
+![](images/CancelCallback.png)
+
 ### Save Event Handler
 This script is useful if you want to store the completed wizard form
 
@@ -511,11 +513,15 @@ This script is useful if you want to store the completed wizard form
 5. Complete the input parameter for the "FormWizardReset" Global Script as required
    1. WizardContainerClass: The class assigned to the main wizard container
 
+![](images/SaveCallback.png)
+
 ### Next Event Handler
 This script is useful if you want to store partially completed wizard forms
 
 1. Create a Page Script to handle the Next navigation callback
 2. To get the fields from the step, add an input parameter, which will contain the data from the step only (e.g. Data)
+
+![](images/NextCallback.png)
 
 ## Page.Load EventHandler
 1. Drag the global script called "FormWizardGenerate" into the Page.Load Event Handler
