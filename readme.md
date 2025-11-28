@@ -36,6 +36,74 @@ let wizardSaveCallback = ~.Parameters.Input.SaveCallback;
 let wizardCloseCallback = ~.Parameters.Input.CancelCallback;
 let wizardNextCallback = ~.Parameters.Input.NextCallback;
 let wizardConfig = ~.Parameters.Input.WizardStepsConfig || [];
+const CONTROL_CONFIG = [
+    { selector: ".date-picker-container", property: "Date" },
+    { selector: ".text-box-container", property: "Text" },
+    { selector: ".check-box-list-container", property: "SelectedOptions", isList: true },
+    { selector: ".radio-button-list-container, .drop-down-container", property: "SelectedOption", isSelect: true }
+];
+const WIZARD_STYLES = `.stadium-wizard-container {
+    display: flex;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    
+    border: 1px solid var(--stadium-wizard-border-color, var(--DARK-GREY, #ccc));
+    & .stadium-wizard-step {
+        border-bottom: 1px solid var(--stadium-wizard-border-color, var(--DARK-GREY, #ccc));
+        width: 100%;
+        height: 100%;
+        & .stadium-wizard-header {
+            padding-top: var(--stadium-wizard-padding, 1rem);
+            padding-bottom: var(--stadium-wizard-padding, 1rem);
+        }
+        & > .stack-layout-container {
+            padding-left: var(--stadium-wizard-padding, 1rem);
+            padding-bottom: var(--stadium-wizard-padding, 1rem);
+        }
+    }
+    & .stadium-wizard-header {
+        display: flex;
+        justify-content: space-between;
+        border-bottom: 1px solid var(--stadium-wizard-border-color, var(--DARK-GREY, #ccc));
+        & .control-container {
+            margin-top: 0;
+            padding-right: 0;
+        }
+        & .stadium-wizard-header-title {
+            font-size: var(--stadium-wizard-heading-font-size, 2.4rem);
+            padding-left: var(--stadium-wizard-padding, 1rem);
+            padding-right: var(--stadium-wizard-padding, 1rem);
+        }
+        & .stadium-wizard-step-counter {
+            font-size: var(--stadium-wizard-counter-font-size, 2rem);
+            padding-right: var(--stadium-wizard-padding, 1rem);
+            white-space: nowrap;
+        }
+    }
+    & .stadium-wizard-footer {
+        display: flex;
+        justify-content: space-between;
+        padding: var(--stadium-wizard-padding, 1rem);
+        & .control-container {
+            margin-top: 0;
+            padding-right: 0;
+        }
+        & .stadium-wizard-right-side {
+            display: flex;
+            gap: var(--stadium-wizard-padding, 1rem);
+        }
+        & .wizard-cancel-button-container {
+            padding-right: var(--stadium-wizard-padding, 1rem);
+        }
+    }
+    & .disabled-button {
+        pointer-events: none;
+        opacity: 0.5;
+    }
+    & .btn-lg {
+        padding: var(--stadium-button-rightleft-padding, 0.4rem) var(--stadium-button-topbottom-padding, 1rem);
+    }
+}`;
 let wizardContainer = document.querySelectorAll(wizardClassName);
 if (wizardContainer.length == 0) {
     console.error("The container for the wizard was not found. Drag a container control into the page and assign the class '" + wizardClassName + "' to it.");
@@ -48,18 +116,17 @@ wizardContainer = wizardContainer[0];
 wizardContainer.classList.add("stadium-wizard-container");
 let contID = wizardContainer.id;
 loadCSS();
-let tries = 0;
 let wait = async (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
-let scriptCaller = async (script, params) => {
-    tries++;
-    if (tries > 20) {
+let scriptCaller = async (script, params, attempt = 1) => {
+    if (attempt > 20) {
         throw new Error(`Failed to call script "${script}" after 20 retries`);
     }
     try {
-        await this[script](params);
+        await scope[script](params);
         return true;
     } catch (error) {
-        return wait(100).then(() => scriptCaller(script, params));
+        console.warn(`scriptCaller: Attempt ${attempt} failed for "${script}". Retrying...`, error);
+        return wait(100).then(() => scriptCaller(script, params, attempt + 1));
     }
 };
 let getObjectName = (obj) => {
@@ -74,17 +141,15 @@ let getObjectName = (obj) => {
     }
     return objectName;
 };
-
-let wFoot = wizardContainer.querySelector(".stadium-wizard-footer");
-if (wFoot) {
-    wFoot.remove();
-    let wHeads = wizardContainer.querySelectorAll(".stadium-wizard-header");
-    for (let i = 0; i < wHeads.length; i++) {
-        wHeads[i].remove();
+let wizardFooter = wizardContainer.querySelector(".stadium-wizard-footer");
+if (wizardFooter) {
+    wizardFooter.remove();
+    let wizardHeaders = wizardContainer.querySelectorAll(".stadium-wizard-header");
+    for (let i = 0; i < wizardHeaders.length; i++) {
+        wizardHeaders[i].remove();
     }
 }
 initWizard();
-
 //--- Wizard Generation ---//
 function initWizard() {
     let maxWidth = 0;
@@ -94,12 +159,11 @@ function initWizard() {
         let wizardStep = containerChildEls[i];
         wizardStep.classList.add("stadium-wizard-step");
         let wizardHeaderEl = createTag("div", ["stadium-wizard-header"], []);
-        let wizardHeading = createTag("div", ["stadium-wizard-header-title", "control-container","label-container"], []);
+        let wizardHeading = createTag("div", ["stadium-wizard-header-title", "control-container", "label-container"], []);
         let wizardHeadingSpan = createTag("span", [], []);
         wizardHeadingSpan.textContent = wizardConfig[i];
         wizardHeading.appendChild(wizardHeadingSpan);
-
-        let wizardStepCounter = createTag("div", ["stadium-wizard-step-counter", "control-container","label-container"], []);
+        let wizardStepCounter = createTag("div", ["stadium-wizard-step-counter", "control-container", "label-container"], []);
         let wizardStepCounterSpan = createTag("span", [], []);
         wizardStepCounterSpan.textContent = `${i + 1} / ${containerChildEls.length}`;
         wizardStepCounter.appendChild(wizardStepCounterSpan);
@@ -107,12 +171,8 @@ function initWizard() {
         wizardHeaderEl.appendChild(wizardStepCounter);
         wizardStep.insertBefore(wizardHeaderEl, wizardStep.firstChild);
         const rect = wizardStep.getBoundingClientRect();
-        if (rect.width > maxWidth) {
-            maxWidth = rect.width;
-        }
-        if (rect.height > maxHeight) {
-            maxHeight = rect.height;
-        }
+        if (rect.width > maxWidth) maxWidth = rect.width;
+        if (rect.height > maxHeight) maxHeight = rect.height;
         setDMValue(wizardStep, "Visible", false);
         if (i === 0) {
             setDMValue(wizardStep, "Visible", true);
@@ -123,24 +183,21 @@ function initWizard() {
     attachStyling(maxWidth, maxHeight);
 }
 function addWizardButtons() {
-    let cancelButtonContainer = createTag("div", ["wizard-cancel-button-container","control-container","button-container", "secondary"], []);
-    let cancelButton = createTag("button", ["wizard-cancel-button", "btn","btn-lg","btn-default"], []);
+    let cancelButtonContainer = createTag("div", ["wizard-cancel-button-container", "control-container", "button-container", "secondary"], []);
+    let cancelButton = createTag("button", ["wizard-cancel-button", "btn", "btn-lg", "btn-default"], []);
     cancelButton.textContent = "Cancel";
     cancelEventHandler(cancelButton);
     cancelButtonContainer.appendChild(cancelButton);
-
-    let nextButtonContainer = createTag("div", ["wizard-next-button-container","control-container","button-container"], []);
-    let nextButton = createTag("button", ["wizard-next-button", "btn","btn-lg","btn-default"], []);
+    let nextButtonContainer = createTag("div", ["wizard-next-button-container", "control-container", "button-container"], []);
+    let nextButton = createTag("button", ["wizard-next-button", "btn", "btn-lg", "btn-default"], []);
     nextButton.textContent = "Next";
     nextButtonContainer.appendChild(nextButton);
     stepEventHandler(nextButton, "next");
-
-    let previousButtonContainer = createTag("div", ["wizard-previous-button-container","control-container","button-container"], []);
-    let previousButton = createTag("button", ["wizard-previous-button", "btn","btn-lg","btn-default", "disabled-button"], []);
+    let previousButtonContainer = createTag("div", ["wizard-previous-button-container", "control-container", "button-container"], []);
+    let previousButton = createTag("button", ["wizard-previous-button", "btn", "btn-lg", "btn-default", "disabled-button"], []);
     previousButton.textContent = "Previous";
     stepEventHandler(previousButton, "previous");
     previousButtonContainer.appendChild(previousButton);
-    
     let wizardFooterEl = createTag("div", ["stadium-wizard-footer"], []);
     wizardFooterEl.appendChild(cancelButtonContainer);
     let wizardFooterRightSide = createTag("div", ["stadium-wizard-right-side"], []);
@@ -212,93 +269,51 @@ async function showStep(stepButton) {
         }
     });
 }
+async function validateControl(control, config) {
+    setDMValue(control, "IsValid", true);
+    control.dispatchEvent(new Event('blur'));
+    const [isRequired, isVisible, value] = await Promise.all([
+        getDMValues(control, "Required"),
+        getDMValues(control, "Visible"),
+        getDMValues(control, config.property)
+    ]);
+    let invalid = control.classList.contains("has-validation-error");
+    let isEmpty = false;
+    if (config.isList) {
+        isEmpty = !value || value.length === 0;
+    } else if (config.isSelect) {
+        isEmpty = !value || !value.text;
+    } else {
+        isEmpty = !value;
+    }
+    if ((isRequired && isVisible && isEmpty) || invalid) {
+        setDMValue(control, "IsValid", false);
+        return false;
+    }
+    return true;
+}
 async function checkValidity(step) {
-    let validationPassed = true;
-    let dateFields = step.querySelectorAll(".date-picker-container");
-    for (let i = 0; i < dateFields.length; i++) {
-        setDMValue(dateFields[i], "IsValid", true);
-        dateFields[i].dispatchEvent(new Event('blur'));
-        let isRequired = await getDMValues(dateFields[i], "Required");
-        let isVisible = await getDMValues(dateFields[i], "Visible");
-        let value = await getDMValues(dateFields[i], "Date");
-        let invalid = dateFields[i].classList.contains("has-validation-error");
-        if ((isRequired && isVisible && !value) || invalid) {
-            validationPassed = false;
-            setDMValue(dateFields[i], "IsValid", false);
-        }
+    const validationPromises = CONTROL_CONFIG.flatMap(config => {
+        const controls = Array.from(step.querySelectorAll(config.selector));
+        return controls.map(control => validateControl(control, config));
+    });
+    const results = await Promise.all(validationPromises);
+    return results.every(valid => valid);
+}
+async function fetchControlData(control, config) {
+    const value = await getDMValues(control, config.property);
+    if (value) {
+        return { Name: getObjectName(control), Value: value };
     }
-    let textBoxes = step.querySelectorAll(".text-box-container");
-    for (let i = 0; i < textBoxes.length; i++) {
-        setDMValue(textBoxes[i], "IsValid", true);
-        textBoxes[i].dispatchEvent(new Event('blur'));
-        let isRequired = await getDMValues(textBoxes[i], "Required");
-        let isVisible = await getDMValues(textBoxes[i], "Visible");
-        let value = await getDMValues(textBoxes[i], "Text");
-        let invalid = textBoxes[i].classList.contains("has-validation-error");
-        if ((isRequired && isVisible && !value) || invalid) {
-            validationPassed = false;
-            setDMValue(textBoxes[i], "IsValid", false);
-        }
-    }
-    let checkBoxListFields = step.querySelectorAll(".check-box-list-container");
-    for (let i = 0; i < checkBoxListFields.length; i++) {
-        setDMValue(checkBoxListFields[i], "IsValid", true);
-        checkBoxListFields[i].dispatchEvent(new Event('blur'));
-        let isRequired = await getDMValues(checkBoxListFields[i], "Required");
-        let isVisible = await getDMValues(checkBoxListFields[i], "Visible");
-        let selected = await getDMValues(checkBoxListFields[i], "SelectedOptions");
-        let invalid = checkBoxListFields[i].classList.contains("has-validation-error");
-        if ((isRequired && isVisible && selected.length == 0) || invalid) {
-            validationPassed = false;
-            setDMValue(checkBoxListFields[i], "IsValid", false);
-        }
-    }
-    let selectFields = step.querySelectorAll(".radio-button-list-container, .drop-down-container");
-    for (let i = 0; i < selectFields.length; i++) {
-        setDMValue(selectFields[i], "IsValid", true);
-        selectFields[i].dispatchEvent(new Event('blur'));
-        let isRequired = await getDMValues(selectFields[i], "Required");
-        let isVisible = await getDMValues(selectFields[i], "Visible");
-        let value = await getDMValues(selectFields[i], "SelectedOption");
-        let invalid = selectFields[i].classList.contains("has-validation-error");
-        if ((isRequired && isVisible && !value.text) || invalid) {
-            validationPassed = false;
-            setDMValue(selectFields[i], "IsValid", false);
-        }
-    }
-    return validationPassed;
+    return null;
 }
 async function getStepData(step) {
-    let stepdata = [];
-    let dateFields = step.querySelectorAll(".date-picker-container");
-    for (let i = 0; i < dateFields.length; i++) {
-        let val = {};
-        val.Name = getObjectName(dateFields[i]);
-        val.Value = await getDMValues(dateFields[i], "Date");
-        if (val.Value) stepdata.push(val);
-    }
-    let textBoxes = step.querySelectorAll(".text-box-container");
-    for (let i = 0; i < textBoxes.length; i++) {
-        let val = {};
-        val.Name = getObjectName(textBoxes[i]);
-        val.Value = await getDMValues(textBoxes[i], "Text");
-        if (val.Value) stepdata.push(val);
-    }
-    let checkBoxListFields = step.querySelectorAll(".check-box-list-container");
-    for (let i = 0; i < checkBoxListFields.length; i++) {
-        let val = {};
-        val.Name = getObjectName(checkBoxListFields[i]);
-        val.Value = await getDMValues(checkBoxListFields[i], "SelectedOptions");
-        if (val.Value) stepdata.push(val);
-    }
-    let selectFields = step.querySelectorAll(".radio-button-list-container, .drop-down-container");
-    for (let i = 0; i < selectFields.length; i++) {
-        let val = {};
-        val.Name = getObjectName(selectFields[i]);
-        val.Value = await getDMValues(selectFields[i], "SelectedOption");
-        if (val.Value) stepdata.push(val);
-    }
-    return stepdata;
+    const dataPromises = CONTROL_CONFIG.flatMap(config => {
+        const controls = Array.from(step.querySelectorAll(config.selector));
+        return controls.map(control => fetchControlData(control, config));
+    });
+    const values = await Promise.all(dataPromises);
+    return values.filter(v => v !== null);
 }
 function createTag(type, arrClasses, arrAttributes) {
     const el = document.createElement(type);
@@ -343,68 +358,7 @@ function loadCSS() {
         let cssMain = document.createElement("style");
         cssMain.id = moduleID;
         cssMain.type = "text/css";
-        cssMain.textContent = `.stadium-wizard-container {
-    display: flex;
-    flex-direction: column;
-    flex-wrap: nowrap;
-    
-    border: 1px solid var(--stadium-wizard-border-color, var(--DARK-GREY, #ccc));
-    .stadium-wizard-step {
-        border-bottom: 1px solid var(--stadium-wizard-border-color, var(--DARK-GREY, #ccc));
-        width: 100%;
-        height: 100%;
-        .stadium-wizard-header {
-            padding-top: var(--stadium-wizard-padding, 1rem);
-            padding-bottom: var(--stadium-wizard-padding, 1rem);
-        }
-        > .stack-layout-container {
-            padding-left: var(--stadium-wizard-padding, 1rem);
-            padding-bottom: var(--stadium-wizard-padding, 1rem);
-        }
-    }
-    .stadium-wizard-header {
-        display: flex;
-        justify-content: space-between;
-        border-bottom: 1px solid var(--stadium-wizard-border-color, var(--DARK-GREY, #ccc));
-        .control-container {
-            margin-top: 0;
-            padding-right: 0;
-        }
-        .stadium-wizard-header-title {
-            font-size: var(--stadium-wizard-heading-font-size, 2.4rem);
-            padding-left: var(--stadium-wizard-padding, 1rem);
-            padding-right: var(--stadium-wizard-padding, 1rem);
-        }
-        .stadium-wizard-step-counter {
-            font-size: var(--stadium-wizard-counter-font-size, 2rem);
-            padding-right: var(--stadium-wizard-padding, 1rem);
-            white-space: nowrap;
-        }
-    }
-    .stadium-wizard-footer {
-        display: flex;
-        justify-content: space-between;
-        padding: var(--stadium-wizard-padding, 1rem);
-        .control-container {
-            margin-top: 0;
-            padding-right: 0;
-        }
-        .stadium-wizard-right-side {
-            display: flex;
-            gap: var(--stadium-wizard-padding, 1rem);
-        }
-        .wizard-cancel-button-container {
-            padding-right: var(--stadium-wizard-padding, 1rem);
-        }
-    }
-    .disabled-button {
-        pointer-events: none;
-        opacity: 0.5;
-    }
-    .btn-lg {
-        padding: var(--stadium-button-rightleft-padding, 0.4rem) var(--stadium-button-topbottom-padding, 1rem);
-    }
-}`;
+        cssMain.textContent = WIZARD_STYLES;
         document.head.appendChild(cssMain);
     }
 }
@@ -429,6 +383,12 @@ if (wizardContainer.length == 0) {
     return false;
 }
 wizardContainer = wizardContainer[0];
+const RESET_CONFIG = [
+    { selector: ".date-picker-container", property: "Date", resetValue: undefined },
+    { selector: ".text-box-container", property: "Text", resetValue: undefined },
+    { selector: ".check-box-list-container", property: "SelectedValues", resetValue: [] },
+    { selector: ".radio-button-list-container, .drop-down-container", property: "SelectedValue", resetValue: undefined }
+];
 let getObjectName = (obj) => {
     if (!obj?.id) {
         console.error("Element missing ID attribute");
@@ -441,46 +401,29 @@ let getObjectName = (obj) => {
     }
     return objectName;
 };
-let dateFields = wizardContainer.querySelectorAll(".date-picker-container");
-for (let i = 0; i < dateFields.length; i++) {
-    setDMValue(dateFields[i], "Date", undefined);
-    setDMValue(dateFields[i], "IsValid", true);
-}
-let textBoxes = wizardContainer.querySelectorAll(".text-box-container");
-for (let i = 0; i < textBoxes.length; i++) {
-    setDMValue(textBoxes[i], "Text", undefined);
-    setDMValue(textBoxes[i], "IsValid", true);
-}
-let checkBoxListFields = wizardContainer.querySelectorAll(".check-box-list-container");
-for (let i = 0; i < checkBoxListFields.length; i++) {
-    setDMValue(checkBoxListFields[i], "SelectedValues", []);
-    setDMValue(checkBoxListFields[i], "IsValid", true);
-}
-let selectFields = wizardContainer.querySelectorAll(".radio-button-list-container, .drop-down-container");
-for (let i = 0; i < selectFields.length; i++) {
-    setDMValue(selectFields[i], "SelectedValue", undefined);
-    setDMValue(selectFields[i], "IsValid", true);
-}
-
-let wizardSteps = wizardContainer.querySelectorAll(".stadium-wizard-step");
-let nextButton = wizardContainer.querySelector(".wizard-next-button");
-let previousButton = wizardContainer.querySelector(".wizard-previous-button");
-nextButton.textContent = "Next";
-previousButton.classList.add("disabled-button");
-wizardSteps.forEach((step, index) => {
-    if (index === 0) {
-        step.classList.add("active-step");
-        setDMValue(wizardSteps[index], "Visible", true);
-    } else {
-        step.classList.remove("active-step");
-        setDMValue(wizardSteps[index], "Visible", false);
-    }
-});
-
 function setDMValue(ob, property, value) {
     let obname = getObjectName(ob);
-    scope[`${obname}${property}`] = value;
+    if (obname) {
+        scope[`${obname}${property}`] = value;
+    }
 }
+RESET_CONFIG.forEach(config => {
+    const controls = wizardContainer.querySelectorAll(config.selector);
+    controls.forEach(control => {
+        setDMValue(control, config.property, config.resetValue);
+        setDMValue(control, "IsValid", true);
+    });
+});
+let wizardSteps = wizardContainer.querySelectorAll(".stadium-wizard-step");
+wizardSteps.forEach((step, index) => {
+    const isFirst = index === 0;
+    step.classList.toggle("active-step", isFirst);
+    setDMValue(step, "Visible", isFirst);
+});
+let nextButton = wizardContainer.querySelector(".wizard-next-button");
+if (nextButton) nextButton.textContent = "Next";
+let previousButton = wizardContainer.querySelector(".wizard-previous-button");
+if (previousButton) previousButton.classList.add("disabled-button");
 ```
 
 ## Page Setup
